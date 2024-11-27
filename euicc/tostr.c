@@ -5,9 +5,7 @@ char *euicc_mccmnc2str(char* value)
     char* _val = malloc(7);
     memcpy(_val, value, 6);
     _val[6] = 0;
-    if (_val[3] == 'f') {
-        _val[3] = value[4];
-        _val[4] = value[5];
+    if (_val[5] == 'f') {
         _val[5] = 0;
     }
     return _val;

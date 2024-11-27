@@ -24,3 +24,6 @@ lpac-*.zip
 .idea
 cmake-build-*
 build.sh
+
+*.out.js
+/test.sh

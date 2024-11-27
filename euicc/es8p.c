@@ -118,7 +118,7 @@ int es8p_metadata_parse(struct es8p_metadata **stru_metadata, const char *b64_Me
                 while (euicc_derutil_unpack_next(&owner, &owner, n_iter.value, n_iter.length) == 0) {
                     switch (owner.tag) {
                         case 0x80:
-                            euicc_hexutil_bin2gsmbcd_nb(p->profileOwner.mccmnc, 6 + 1, owner.value, owner.length);
+                            euicc_hexutil_bin2gsmbcd_mccmnc(p->profileOwner.mccmnc, 6 + 1, owner.value, owner.length);
                             break;
                         case 0x81:
                             p->profileOwner.gid1 = malloc(owner.length + 1);

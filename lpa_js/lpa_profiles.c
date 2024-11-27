@@ -8,6 +8,8 @@ cJSON * metadata_to_cjson(const struct es10c_profile_info_list *rptr) {
 //    cJSON_AddStringOrNullToObject(jprofile, "isdpAid", rptr->isdpAid);
     cJSON_AddNumberToObject(jprofile, "profileState", rptr->profileState);
     cJSON_AddStringOrNullToObject(jprofile, "profileOwnerMccMnc", euicc_mccmnc2str(rptr->profileOwner.mccmnc));
+    cJSON_AddStringOrNullToObject(jprofile, "profileOwnerGid1", rptr->profileOwner.gid1);
+    cJSON_AddStringOrNullToObject(jprofile, "profileOwnerGid2", rptr->profileOwner.gid2);
     cJSON_AddStringOrNullToObject(jprofile, "profileNickname", rptr->profileNickname);
     cJSON_AddStringOrNullToObject(jprofile, "serviceProviderName", rptr->serviceProviderName);
     cJSON_AddStringOrNullToObject(jprofile, "profileName", rptr->profileName);
@@ -36,6 +38,8 @@ cJSON * metadata_to_cjson_full(const struct es10c_profile_info_list *rptr) {
     cJSON_AddStringOrNullToObject(jprofile, "isdpAid", rptr->isdpAid);
     cJSON_AddStringOrNullToObject(jprofile, "profileState", euicc_profilestate2str(rptr->profileState));
     cJSON_AddStringOrNullToObject(jprofile, "profileOwnerMccMnc", euicc_mccmnc2str(rptr->profileOwner.mccmnc));
+    cJSON_AddStringOrNullToObject(jprofile, "profileOwnerGid1", rptr->profileOwner.gid1);
+    cJSON_AddStringOrNullToObject(jprofile, "profileOwnerGid2", rptr->profileOwner.gid2);
     cJSON_AddStringOrNullToObject(jprofile, "profileNickname", rptr->profileNickname);
     cJSON_AddStringOrNullToObject(jprofile, "serviceProviderName", rptr->serviceProviderName);
     cJSON_AddStringOrNullToObject(jprofile, "profileName", rptr->profileName);
@@ -121,6 +125,43 @@ char* delete_profile(char *iccid) {
     return ret;
 }
 
+char* dump_cert(char* smdp) {
+    int val;
+    char* ret;
+    char* step;
+    char* message;
+    cJSON *result = cJSON_CreateObject();
+    struct euicc_ctx ctx = {0};
+    val = es10b_get_euicc_challenge_and_info(&ctx);
+    ctx.http._internal.server_address = smdp;
+    val = es9p_initiate_authentication(&ctx);
+    if (val) {
+        step = "es9p_initiate_authentication";
+        message = ctx.http.status.message;
+        goto error;
+    }
+    val = es10b_authenticate_server(&ctx, "", "114514191981003");
+    if (val) {
+        step = "es10b_authenticate_server";
+        message = "es10b_authenticate_server failed";
+        goto error;
+    }
+    cJSON_AddStringToObject(result, "authenticate_server_response", ctx.http._internal.b64_authenticate_server_response);
+    cJSON_AddBoolToObject(result, "success", 1);
+    ret = cJSON_PrintUnformatted(result);
+    cJSON_Delete(result);
+    return ret;
+
+    error:
+    cJSON_AddBoolToObject(result, "success", 0);
+    cJSON_AddStringOrNullToObject(result, "step", step);
+    cJSON_AddStringOrNullToObject(result, "message", message);
+    ret = cJSON_PrintUnformatted(result);
+    cJSON_Delete(result);
+    return ret;
+}
+
+
 char* authenticate_profile(char* smdp, char* matchingId, char* imei) {
     int val;
     char* ret;
@@ -138,6 +179,7 @@ char* authenticate_profile(char* smdp, char* matchingId, char* imei) {
     }
     ctx.http._internal.server_address = smdp;
 
+    printf("es10b_get_euicc_challenge_and_info ok!\n");
     val = es9p_initiate_authentication(&ctx);
     if (val) {
         step = "es9p_initiate_authentication";
@@ -145,6 +187,7 @@ char* authenticate_profile(char* smdp, char* matchingId, char* imei) {
         goto error;
     }
 
+    printf("es9p_initiate_authentication ok!\n");
     val = es10b_authenticate_server(&ctx, matchingId, imei);
     if (val) {
         step = "es10b_authenticate_server";
@@ -152,6 +195,9 @@ char* authenticate_profile(char* smdp, char* matchingId, char* imei) {
         goto error;
     }
     cJSON_AddStringToObject(result, "authenticate_server_response", ctx.http._internal.b64_authenticate_server_response);
+
+    printf("es10b_authenticate_server ok!\n");
+
     val = es9p_authenticate_client(&ctx);
 
     if (val) {
@@ -162,13 +208,26 @@ char* authenticate_profile(char* smdp, char* matchingId, char* imei) {
         goto error;
     }
 
-    cJSON_AddStringToObject(result, "profile_metadata_b64", ctx.http._internal.prepare_download_param->b64_profileMetadata);
+    uint32_t smdpSigned2_len = strlen(ctx.http._internal.prepare_download_param->b64_smdpSigned2);
+    unsigned char* smdpSigned2 = malloc(smdpSigned2_len + 1);
+    smdpSigned2_len = euicc_base64_decode(smdpSigned2, ctx.http._internal.prepare_download_param->b64_smdpSigned2);
 
+
+    struct euicc_derutil_node node, tmpnode;
+    euicc_derutil_unpack_first(&node, smdpSigned2, smdpSigned2_len);
+
+    tmpnode.self.ptr = node.value;
+    tmpnode.self.length = 0;
+    euicc_derutil_unpack_next(&tmpnode, &tmpnode, smdpSigned2, smdpSigned2_len); // tx-id
+    euicc_derutil_unpack_next(&tmpnode, &tmpnode, smdpSigned2, smdpSigned2_len); // isCcRequired
+
+    cJSON_AddBoolToObject(result, "isCcRequired", *tmpnode.value);
+
+    cJSON_AddStringToObject(result, "profile_metadata_b64", ctx.http._internal.prepare_download_param->b64_profileMetadata);
 
     uint32_t metadata_len = euicc_base64_decode_len(ctx.http._internal.prepare_download_param->b64_profileMetadata);
     unsigned char* tmp = malloc(metadata_len + 1);
     metadata_len = euicc_base64_decode(tmp, ctx.http._internal.prepare_download_param->b64_profileMetadata);
-    struct euicc_derutil_node node;
     euicc_derutil_unpack_find_tag(&node, 0xBF25, tmp, metadata_len);
     struct es10c_profile_info_list *rptr = decode_profile_metadata(&node);
     cJSON *json = metadata_to_cjson(rptr);
@@ -252,6 +311,9 @@ char* download_profile(const char *_internal, char* confirmation_code) {
         subjectCode = ctx.http.status.subjectCode;
         goto error;
     }
+
+    // cJSON_AddStringToObject(result, "download_bpp", ctx.http._internal.b64_bound_profile_package);
+    cJSON_AddNumberToObject(result, "download_bpp_size", strlen(ctx.http._internal.b64_bound_profile_package));
 
     printf("es9p_get_bound_profile_package!\n");
     if (es10b_load_bound_profile_package(&ctx, &download_result))

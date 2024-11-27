@@ -124,7 +124,7 @@ struct es10c_profile_info_list* decode_profile_metadata(struct euicc_derutil_nod
                 switch (owner.tag) {
                     case 0x80: // mcc_mnc
                         p->profileOwner.mccmnc = malloc((owner.length * 2) + 1);
-                        euicc_hexutil_bin2gsmbcd_nb(p->profileOwner.mccmnc, (owner.length * 2) + 1, owner.value, owner.length);
+                        euicc_hexutil_bin2gsmbcd_mccmnc(p->profileOwner.mccmnc, (owner.length * 2) + 1, owner.value, owner.length);
                         break;
                     case 0x81: // gid1
                         p->profileOwner.gid1 = malloc((owner.length * 2) + 1);

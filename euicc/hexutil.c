@@ -116,7 +116,11 @@ int euicc_hexutil_gsmbcd2bin(uint8_t *output, uint32_t output_len, const char *s
         char high_nibble = (i + 1 < str_length) ? str[i + 1] : 'F';
         char low_nibble = str[i];
 
-        if (low_nibble < '0' || low_nibble > '9')
+        if (low_nibble == 'F' || low_nibble == 'f')
+        {
+            low_nibble = 0x3f;
+        }
+        else if (low_nibble < '0' || low_nibble > '9')
         {
             return -1;
         }
@@ -172,20 +176,16 @@ int euicc_hexutil_bin2gsmbcd(char *output, uint32_t output_len, const uint8_t *b
     return 0;
 }
 
-int euicc_hexutil_bin2gsmbcd_nb(char *output, uint32_t output_len, const uint8_t *binData, uint32_t length)
+int euicc_hexutil_bin2gsmbcd_mccmnc(char *output, uint32_t output_len, const uint8_t *binData, uint32_t length)
 {
     if (euicc_hexutil_bin2hex(output, output_len, binData, length))
     {
         return -1;
     }
 
-    length = strlen(output);
-    for (int i = 0; i < length - 1; i += 2)
-    {
-        char temp = output[i];
-        output[i] = output[i + 1];
-        output[i + 1] = temp;
-    }
+    output[0] ^= output[1] ^= output[0] ^= output[1];
+    output[2] ^= output[3] ^= output[2] ^= output[3];
+    output[3] ^= output[5] ^= output[3] ^= output[5];
 
     return 0;
 }
